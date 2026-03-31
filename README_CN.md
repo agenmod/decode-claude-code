@@ -160,6 +160,25 @@ startKeychainPrefetch(); // 并行启动 2 个 keychain 读取
 </details>
 
 <details>
+<summary><b>🔥 Auto Dream 自动梦境 — Claude 在你离开时「做梦」，像人类一样整合记忆</b></summary>
+
+`src/services/autoDream/` 实现了后台记忆整合。当你超过 24 小时未使用 Claude Code，且积累了 5 个以上会话时，它会自动启动子 Agent 执行「做梦」：
+
+1. **定向** — 阅读现有记忆目录
+2. **收集** — 扫描日志，grep 会话转录寻找新信号
+3. **整合** — 合并新信息，将相对日期转为绝对日期，删除过时事实
+4. **修剪** — 保持索引文件 < 25KB
+
+梦境 Agent 用只读 Bash（能 `grep` 不能 `rm`），有文件锁防并发，进度显示在任务管理器 UI 中。
+
+```typescript
+const DEFAULTS = { minHours: 24, minSessions: 5 }
+```
+
+→ [完整分析见第 10 章](./10-feature-flags/README.md)
+</details>
+
+<details>
 <summary><b>🔥 Undercover 卧底模式 — Anthropic 员工在公开仓库中自动隐身</b></summary>
 
 `src/utils/undercover.ts` 揭示了一个当 Anthropic 员工操作公开仓库时**自动激活**的模式。它会清除所有 AI 归因标记，并注入这段 prompt：

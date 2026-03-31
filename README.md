@@ -161,6 +161,25 @@ They exploit JavaScript's import evaluation order to overlap I/O with module loa
 </details>
 
 <details>
+<summary><b>🔥 Auto Dream — Claude "dreams" when you're away, consolidating memories like a human</b></summary>
+
+`src/services/autoDream/` implements background memory consolidation. When you haven't used Claude Code for 24+ hours and 5+ sessions have accumulated, it spawns a sub-agent that:
+
+1. **Orients** — reads existing memory directory
+2. **Gathers** — scans logs, greps session transcripts for new signal
+3. **Consolidates** — merges new info, converts relative dates to absolute, deletes contradicted facts
+4. **Prunes** — keeps the index file under 25KB
+
+The dream agent runs with read-only Bash (can `grep` but not `rm`), uses file locking to prevent concurrent dreams, and shows progress in the task manager UI.
+
+```typescript
+const DEFAULTS = { minHours: 24, minSessions: 5 }
+```
+
+→ [Full analysis in Chapter 10](./10-feature-flags/README.md)
+</details>
+
+<details>
 <summary><b>🔥 Undercover Mode — Anthropic employees go invisible on public repos</b></summary>
 
 `src/utils/undercover.ts` reveals a mode that **auto-activates** when Anthropic employees work on public repositories. It strips all AI attribution and injects this prompt:

@@ -43,6 +43,9 @@ const assistantModule = feature('KAIROS')
 | `KAIROS_GITHUB_WEBHOOKS` | GitHub Webhook | 未公开 |
 | `EXPERIMENTAL_SKILL_SEARCH` | 技能搜索 | 实验中 |
 | `BUDDY` | 电子宠物伴侣系统 | 隐藏彩蛋 |
+| `TORCH` | /torch 命令（功能未知，代码已被完全消除） | 未公开 |
+| `ULTRAPLAN` | /ultraplan 超级规划命令 | 未公开 |
+| `UDS_INBOX` | /peers 命令（进程间通信） | 未公开 |
 
 ## KAIROS — 最值得关注的隐藏功能
 
@@ -76,6 +79,97 @@ const enabled = getFeatureValue_CACHED_MAY_BE_STALE(
 ```
 
 `_CACHED_MAY_BE_STALE` 后缀暗示：GrowthBook 的值在启动时缓存，会话期间不实时更新（避免行为中途变化）。
+
+## Auto Dream — 自动梦境（记忆整合）
+
+源码中最「科幻」的功能之一：`src/services/autoDream/`。
+
+### 什么是 Auto Dream？
+
+当你**不使用 Claude Code** 时，它会在后台自动启动一个子 Agent，**像人类做梦一样整合和巩固记忆**。
+
+```typescript
+// autoDream.ts — 背景记忆整合
+// 触发条件（按开销排序，最便宜的先检查）:
+//   1. 时间: 距上次整合 >= 24 小时
+//   2. 会话: 自上次整合后有 >= 5 个新会话
+//   3. 锁: 没有其他进程在整合
+```
+
+### 梦境执行流程
+
+整合 prompt 定义了 4 个阶段（`consolidationPrompt.ts`）：
+
+```
+Phase 1 — Orient（定向）
+  → 阅读现有记忆目录，理解当前索引
+
+Phase 2 — Gather recent signal（收集近期信号）
+  → 扫描日志、检查过时记忆、grep 会话转录
+
+Phase 3 — Consolidate（整合）
+  → 合并新信息到现有记忆文件
+  → 将相对日期转换为绝对日期
+  → 删除被推翻的旧事实
+
+Phase 4 — Prune and index（修剪和索引）
+  → 保持索引文件 < 25KB / < 指定行数
+  → 每个条目一行，~150 字符
+```
+
+### 关键设计细节
+
+- **只读 Bash**：梦境 Agent 只能执行 `ls`, `find`, `grep`, `cat` 等只读命令
+- **加锁防冲突**：`consolidationLock.ts` 确保不会有两个梦境进程同时运行
+- **可视追踪**：梦境进度通过 `DreamTask` 显示在 UI 底栏的任务管理器中
+- **KAIROS 模式互斥**：当 KAIROS 助理模式激活时，使用独立的 disk-skill dream 机制
+- **失败回滚**：如果梦境 Agent 崩溃，锁会回滚到之前的时间戳
+
+### 配置
+
+```typescript
+const DEFAULTS = {
+  minHours: 24,      // 距上次整合最少 24 小时
+  minSessions: 5,    // 至少积累 5 个新会话
+}
+```
+
+可通过 `settings.json` 中的 `autoDreamEnabled` 开关控制，或通过 GrowthBook (`tengu_onyx_plover`) 远程控制。
+
+## 自定义 Agent 创建向导（Wizard）
+
+`src/components/agents/new-agent-creation/` 包含一套完整的**交互式 Agent 构建向导**。
+
+### 11 步创建流程
+
+```
+CreateAgentWizard 步骤:
+ 1. LocationStep   — 选择 Agent 存放位置
+ 2. MethodStep     — 选择创建方式
+ 3. GenerateStep   — 自动生成配置
+ 4. TypeStep       — 选择 Agent 类型
+ 5. PromptStep     — 编写系统提示词
+ 6. DescriptionStep — 填写描述
+ 7. ToolsStep      — 选择可用工具
+ 8. ModelStep      — 选择模型
+ 9. ColorStep      — 选择颜色标识
+10. MemoryStep     — 配置记忆（可选）
+11. ConfirmStep    — 确认并创建
+```
+
+用户可以自定义：模型类型、可用工具、记忆、位置等所有参数。这不只是一个配置文件编辑器，而是一个完整的**图形化 Agent 构建器**。
+
+## Torch — 完全未知的隐藏命令
+
+```typescript
+const torch = feature('TORCH')
+  ? require('./commands/torch.js').default
+  : null
+```
+
+`/torch` 命令被 `TORCH` Feature Flag 控制。由于构建时死代码消除，`commands/torch.js` 文件**完全不存在于发布的包中** — 连混淆代码都没有。
+
+这意味着 `torch` 的功能完全未知，只知道它是一个斜杠命令，且 Anthropic 认为它重要到需要单独的 Feature Flag 来控制。
 
 ## Buddy System — 内置电子宠物（彩蛋）
 
