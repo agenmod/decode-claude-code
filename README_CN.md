@@ -159,6 +159,39 @@ startKeychainPrefetch(); // 并行启动 2 个 keychain 读取
 → [完整分析见第 09 章](./09-startup-optimization/README.md)
 </details>
 
+<details>
+<summary><b>🔥 Undercover 卧底模式 — Anthropic 员工在公开仓库中自动隐身</b></summary>
+
+`src/utils/undercover.ts` 揭示了一个当 Anthropic 员工操作公开仓库时**自动激活**的模式。它会清除所有 AI 归因标记，并注入这段 prompt：
+
+```
+UNDERCOVER MODE — CRITICAL
+你正在公开/开源仓库中执行卧底任务。
+绝不包含：「Claude Code」、模型代号、Co-Authored-By 行、
+或任何你是 AI 的提示。
+以人类开发者的方式写 commit message。
+```
+
+**没有手动关闭选项**。只要不在白名单内部仓库中，卧底模式就保持开启。也就是说，Anthropic 员工的开源贡献，你永远无法从提交历史中判断是否由 AI 完成。
+
+→ [完整分析见第 10 章](./10-feature-flags/README.md)
+</details>
+
+<details>
+<summary><b>🔥 Buddy System — 编程工具里藏了一个完整的电子宠物</b></summary>
+
+`src/buddy/` 包含了一套完整的虚拟宠物系统：
+- **18 个物种**：duck、goose、blob、cat、dragon、octopus、owl、penguin、turtle、snail、ghost、axolotl、capybara、cactus、robot、rabbit、mushroom、chonk
+- **5 档稀有度**：Common (60%) → Legendary (1%)，还有 1% 概率的 Shiny 闪光变体
+- **ASCII art 精灵**，每个物种 3 帧待机动画
+- **属性**：DEBUGGING / PATIENCE / CHAOS / WISDOM / SNARK
+- **帽子**：crown、tophat、propeller、halo、wizard、beanie、tinyduck
+
+基于 `hash(userId)` 确定性生成 — 每个用户永远对应同一只宠物。宠物坐在输入框旁边，偶尔用语音气泡评论。
+
+→ [完整分析见第 10 章](./10-feature-flags/README.md)
+</details>
+
 ## 源码提取方法
 
 ```bash

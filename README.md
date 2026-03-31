@@ -160,6 +160,39 @@ They exploit JavaScript's import evaluation order to overlap I/O with module loa
 → [Full analysis in Chapter 09](./09-startup-optimization/README.md)
 </details>
 
+<details>
+<summary><b>🔥 Undercover Mode — Anthropic employees go invisible on public repos</b></summary>
+
+`src/utils/undercover.ts` reveals a mode that **auto-activates** when Anthropic employees work on public repositories. It strips all AI attribution and injects this prompt:
+
+```
+UNDERCOVER MODE — CRITICAL
+You are operating UNDERCOVER in a PUBLIC/OPEN-SOURCE repository.
+NEVER include: "Claude Code", model codenames, Co-Authored-By lines,
+or any mention that you are an AI.
+Write commit messages as a human developer would.
+```
+
+There is **no force-OFF switch**. If not in an allowlisted internal repo, undercover mode stays on. This means Anthropic employees' open-source contributions are indistinguishable from human-written code.
+
+→ [Full analysis in Chapter 10](./10-feature-flags/README.md)
+</details>
+
+<details>
+<summary><b>🔥 Buddy System — A full Tamagotchi hidden inside a coding tool</b></summary>
+
+`src/buddy/` contains a complete virtual pet system with:
+- **18 species**: duck, goose, blob, cat, dragon, octopus, owl, penguin, turtle, snail, ghost, axolotl, capybara, cactus, robot, rabbit, mushroom, chonk
+- **5 rarity tiers**: Common (60%) → Legendary (1%), with 1% Shiny variants
+- **ASCII art sprites** with 3-frame idle animations per species
+- **Stats**: DEBUGGING / PATIENCE / CHAOS / WISDOM / SNARK
+- **Hats**: crown, tophat, propeller, halo, wizard, beanie, tinyduck
+
+Generated deterministically from `hash(userId)` — every user gets the same pet forever. The pet sits beside the input box and occasionally comments via speech bubble.
+
+→ [Full analysis in Chapter 10](./10-feature-flags/README.md)
+</details>
+
 ## Tech Stack
 
 | Category | Technology |

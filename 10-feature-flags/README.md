@@ -42,6 +42,7 @@ const assistantModule = feature('KAIROS')
 | `KAIROS_PUSH_NOTIFICATION` | 推送通知 | 未公开 |
 | `KAIROS_GITHUB_WEBHOOKS` | GitHub Webhook | 未公开 |
 | `EXPERIMENTAL_SKILL_SEARCH` | 技能搜索 | 实验中 |
+| `BUDDY` | 电子宠物伴侣系统 | 隐藏彩蛋 |
 
 ## KAIROS — 最值得关注的隐藏功能
 
@@ -76,6 +77,100 @@ const enabled = getFeatureValue_CACHED_MAY_BE_STALE(
 
 `_CACHED_MAY_BE_STALE` 后缀暗示：GrowthBook 的值在启动时缓存，会话期间不实时更新（避免行为中途变化）。
 
+## Buddy System — 内置电子宠物（彩蛋）
+
+源码中最出人意料的发现之一：`src/buddy/` 目录包含一个完整的电子宠物（Tamagotchi）系统。
+
+### 18 个物种
+
+```
+duck · goose · blob · cat · dragon · octopus · owl · penguin
+turtle · snail · ghost · axolotl · capybara · cactus · robot
+rabbit · mushroom · chonk
+```
+
+每个物种都有 **ASCII art 动画精灵**，包含 3 帧待机动画，5 行高、12 字符宽。比如猫：
+
+```
+   /\_/\
+  ( ·   · )
+  (  ω  )
+  (")_(")~
+```
+
+### 稀有度系统
+
+| 稀有度 | 权重 | 星级 |
+|--------|------|------|
+| Common | 60% | ★ |
+| Uncommon | 25% | ★★ |
+| Rare | 10% | ★★★ |
+| Epic | 4% | ★★★★ |
+| Legendary | 1% | ★★★★★ |
+
+还有 **1% 概率的 Shiny 变体**（`shiny: rng() < 0.01`）。
+
+### 属性与装饰
+
+- **5 种属性**：DEBUGGING / PATIENCE / CHAOS / WISDOM / SNARK
+- **6 种眼睛**：`·` `✦` `×` `◉` `@` `°`
+- **8 种帽子**：none / crown / tophat / propeller / halo / wizard / beanie / tinyduck
+- 基于 `hash(userId)` 的确定性生成 — 每个用户永远对应同一只宠物
+
+### 设计原理
+
+宠物坐在用户输入框旁边，用语音气泡偶尔评论。当用户直接喊宠物的名字时，它会回应。`capybara`（水豚）这个物种名暗合了 Claude Mythos 的代号 "Capybara"。
+
+## Undercover Mode — 卧底模式
+
+源码中最具争议的发现：`src/utils/undercover.ts`。
+
+### 什么是卧底模式？
+
+当 Anthropic 员工（`USER_TYPE === 'ant'`）在**公开/开源仓库**中使用 Claude Code 时，该模式**自动激活**，强制隐藏所有 AI 痕迹：
+
+```typescript
+export function isUndercover(): boolean {
+  if (process.env.USER_TYPE === 'ant') {
+    if (isEnvTruthy(process.env.CLAUDE_CODE_UNDERCOVER)) return true
+    // Auto: active unless we've positively confirmed
+    // we're in an allowlisted internal repo
+    return getRepoClassCached() !== 'internal'
+  }
+  return false
+}
+```
+
+### 关键规则
+
+注入到模型的 prompt 中：
+
+```
+## UNDERCOVER MODE — CRITICAL
+
+You are operating UNDERCOVER in a PUBLIC/OPEN-SOURCE repository.
+Your commit messages, PR titles, and PR bodies MUST NOT contain
+ANY Anthropic-internal information. Do not blow your cover.
+
+NEVER include:
+- Internal model codenames (Capybara, Tengu, etc.)
+- Unreleased model version numbers (opus-4-7, sonnet-4-8)
+- Internal repo or project names
+- The phrase "Claude Code" or any mention that you are an AI
+- Co-Authored-By lines or any other attribution
+
+Write commit messages as a human developer would.
+```
+
+### 不可关闭
+
+```typescript
+// There is NO force-OFF. This guards against model codename leaks —
+// if we're not confident we're in an internal repo, we stay undercover.
+```
+
+卧底模式**没有手动关闭选项**。只要不在 Anthropic 内部白名单仓库中，就自动隐身。这意味着 Anthropic 员工对公开项目的贡献，你永远无法从提交历史中判断是否由 AI 完成。
+
 ## 内部用户 vs 外部用户
 
 ```typescript
@@ -88,6 +183,7 @@ const REPLTool = process.env.USER_TYPE === 'ant'
 `USER_TYPE === 'ant'` 控制的功能：
 - REPLTool（交互式 REPL）
 - SuggestBackgroundPRTool（后台 PR 建议）
+- Undercover Mode（卧底模式）
 - 更详细的输出风格指令
 - 数字化长度锚定实验
 - 更多系统提示词段落
