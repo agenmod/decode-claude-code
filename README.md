@@ -1,147 +1,237 @@
-# Decode CC
+<div align="center">
 
-> 深度解读 Anthropic Claude Code 的架构设计与实现原理
+# Decode Claude Code
 
-<p align="center">
-  <strong>🔍 不只是看代码，更要讲清楚「为什么这样设计」</strong>
-</p>
+### The Definitive Architecture Analysis of Anthropic's AI Coding Agent
 
-<p align="center">
-  <a href="#事件背景">事件背景</a> •
-  <a href="#目录">目录</a> •
-  <a href="#快速了解">快速了解</a> •
-  <a href="#贡献">贡献</a>
-</p>
+**1,906 files · 515,029 lines · Fully extracted from npm source maps**
+
+[![GitHub stars](https://img.shields.io/github/stars/agenmod/decode-claude-code?style=social)](https://github.com/agenmod/decode-claude-code)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+
+[**中文版 →**](./README_CN.md)
 
 ---
 
-## 这个项目是什么
+*Claude Code has 85k+ GitHub stars and powers millions of coding sessions daily.*
+*But what's actually happening between your prompt and the response?*
 
-Claude Code 是 Anthropic 的 AI 编程 CLI 工具，GitHub 85k+ stars。2026 年 3 月，由于 npm 包中误包含了 source map 文件（59.8MB 的 `cli.js.map`），其完整 TypeScript 源码（1900+ 文件、51 万行）被公开。
+*We pulled apart every layer — so you don't have to.*
 
-本项目基于公开可得的源码，**系统性地解读 Claude Code 的架构设计、核心原理和工程决策**。不是简单的代码罗列，而是回答：
+</div>
 
-- 为什么 System Prompt 要分「静态区」和「动态区」？
-- Agent Loop 为什么用 `while(tool_call)` 而不是 DAG？
-- 40 个工具的权限系统是怎么设计的？
-- 92% 的 Prompt Cache 命中率是怎么做到的？
-- 多 Agent 协作怎么编排？
-- 启动时间怎么从 200ms 压到 135ms？
+## Why This Exists
 
-## 事件背景
+On March 31, 2026, Anthropic shipped `@anthropic-ai/claude-code@2.1.88` with a **59.8MB source map** (`cli.js.map`) still in the package. That file contained the complete, unobfuscated TypeScript source — 1,906 files, 515,029 lines of code.
 
-| 日期 | 事件 |
-|------|------|
-| 2025-02-24 | v0.2.8 npm 包内含 inline base64 source map，被开发者通过 Sublime Text undo 恢复 |
-| 2025-03 | Anthropic 紧急推送更新移除 source map，并从 npm 删除旧版本 |
-| 2026-03-27 | CMS 配置错误泄露 ~3000 份内部文档，含未发布模型 Claude Mythos 信息 |
-| 2026-03-31 | v2.1.88 npm 包再次包含 `cli.js.map`（59.8MB），可提取全部源文件 |
+This project is **not a code dump**. It's a structured, chapter-by-chapter analysis of **how Claude Code works and why it was designed this way**.
 
-## 快速了解
+We answer questions like:
 
-Claude Code 本质上是一个**本地编排层**，不是 AI 本身 — 所有推理在 Anthropic 服务器上完成。
+- Why does the System Prompt use a `__DYNAMIC_BOUNDARY__` marker to split static and dynamic content?
+- Why is the core loop just `while(tool_call)` with no DAGs or planners?
+- How did they achieve a **92% prompt cache hit rate**?
+- What do feature flags like `KAIROS`, `PROACTIVE`, and `COORDINATOR_MODE` reveal about unreleased features?
+- How do 7,000+ lines of Bash security code protect against command injection?
+
+## Architecture at a Glance
 
 ```
-你的终端
-  ↓
-Claude Code CLI (TypeScript/Bun)
-  ├── System Prompt 组装（110+ 条件字符串）
-  ├── Agent Loop（while tool_call）
-  ├── 工具执行（Bash/Read/Write/Edit/Grep/Glob/Agent/...）
-  ├── 权限检查（5 种模式）
-  └── 上下文管理（200K token，自动压缩）
-  ↓
-Anthropic Messages API（Prompt Cache 92% 命中）
-  ↓
-Claude 模型响应
+  Your Terminal
+       │
+       ▼
+  ┌─────────────────────────────────────────────┐
+  │         Claude Code CLI  (Bun + React/Ink)   │
+  │                                              │
+  │  ┌──────────┐  ┌──────────┐  ┌───────────┐  │
+  │  │ System   │  │  Agent   │  │ Permission │  │
+  │  │ Prompt   │  │  Loop    │  │  System    │  │
+  │  │ Assembly │  │ (while)  │  │ (5 modes)  │  │
+  │  └────┬─────┘  └────┬─────┘  └─────┬──────┘  │
+  │       │             │              │          │
+  │  ┌────┴─────────────┴──────────────┴───────┐  │
+  │  │        40+ Tools · 90+ Commands          │  │
+  │  │   Bash│Read│Write│Edit│Grep│Glob│Agent   │  │
+  │  └────────────────────┬────────────────────┘  │
+  │                       │                       │
+  │  ┌────────────────────┴────────────────────┐  │
+  │  │  Context Management (200K tokens)        │  │
+  │  │  Auto-compaction at 75-92% capacity      │  │
+  │  └────────────────────┬────────────────────┘  │
+  └───────────────────────┼───────────────────────┘
+                          │
+                          ▼
+              Anthropic Messages API
+             (Prompt Cache: 92% reuse)
 ```
 
-**核心数据：**
-- 源码规模：1,906 文件 / 515,029 行 TypeScript
-- 运行时：Bun
-- UI：React + Ink（终端渲染）
-- 工具：40+ 内置工具 + 无限 MCP 扩展
-- 上下文：200K token 窗口
-- 斜杠命令：90+
+**Key numbers:**
 
-## 目录
+| Metric | Value |
+|--------|-------|
+| Source files | 1,906 |
+| Lines of code | 515,029 |
+| Built-in tools | 40+ |
+| Slash commands | 90+ |
+| Context window | 200K tokens |
+| Prompt cache hit rate | 92% |
+| Bash security code | 7,000+ lines |
 
-| 章节 | 主题 | 核心问题 |
-|------|------|----------|
-| [00-overview](./00-overview/) | 全局架构概览 | Claude Code 的整体设计哲学是什么？ |
-| [01-system-prompt](./01-system-prompt/) | System Prompt 分层设计 | 为什么要分静态区和动态区？怎么做到 92% cache 命中？ |
-| [02-agentic-loop](./02-agentic-loop/) | Agent Loop 核心循环 | 一次对话从输入到输出，内部发生了什么？ |
-| [03-tool-system](./03-tool-system/) | 工具系统架构 | 40+ 工具如何注册、调度、执行？ |
-| [04-permission-model](./04-permission-model/) | 权限安全模型 | 5 种权限模式怎么运作？Bash 命令如何做安全检查？ |
-| [05-context-management](./05-context-management/) | 上下文管理与压缩 | 200K 窗口不够用怎么办？自动压缩策略是什么？ |
-| [06-prompt-caching](./06-prompt-caching/) | Prompt Cache 优化 | 怎样设计 prompt 才能最大化缓存命中？ |
-| [07-multi-agent](./07-multi-agent/) | 多 Agent 协作 | 子 Agent 怎么生成？Team 模式怎么并行？ |
-| [08-mcp-integration](./08-mcp-integration/) | MCP 协议集成 | 如何通过 MCP 无限扩展工具能力？ |
-| [09-startup-optimization](./09-startup-optimization/) | 启动性能优化 | 并行预取、懒加载、死代码消除怎么配合？ |
-| [10-feature-flags](./10-feature-flags/) | Feature Flag 体系 | KAIROS、PROACTIVE 等隐藏功能揭秘 |
-| [11-security](./11-security/) | 安全机制深度分析 | 命令注入防护、沙箱隔离、只读模式怎么实现？ |
+## Table of Contents
 
-## 技术栈
+> Each chapter is a self-contained deep-dive. Read in order or jump to what interests you.
 
-| 类别 | 技术 |
-|------|------|
-| 运行时 | [Bun](https://bun.sh) |
-| 语言 | TypeScript (strict) |
-| 终端 UI | React + [Ink](https://github.com/vadimdemedes/ink) |
-| CLI 解析 | Commander.js (extra-typings) |
-| Schema 校验 | Zod v4 |
-| 代码搜索 | ripgrep |
-| 协议 | MCP SDK, LSP |
-| API | Anthropic SDK |
-| 遥测 | OpenTelemetry + gRPC |
-| Feature Flag | GrowthBook |
-| 认证 | OAuth 2.0, JWT, macOS Keychain |
+| # | Chapter | Key Question | Link |
+|---|---------|-------------|------|
+| 00 | **Architecture Overview** | What is Claude Code's design philosophy? | [Read →](./00-overview/README.md) |
+| 01 | **System Prompt Design** | Why split into static/dynamic zones? How to hit 92% cache? | [Read →](./01-system-prompt/README.md) |
+| 02 | **The Agentic Loop** | What happens inside a single request, from input to output? | [Read →](./02-agentic-loop/README.md) |
+| 03 | **Tool System** | How are 40+ tools registered, dispatched, and executed? | [Read →](./03-tool-system/README.md) |
+| 04 | **Permission Model** | How do 5 permission modes work? How is Bash sandboxed? | [Read →](./04-permission-model/README.md) |
+| 05 | **Context Management** | What happens when 200K tokens run out? Auto-compaction? | [Read →](./05-context-management/README.md) |
+| 06 | **Prompt Caching** | How to design prompts for maximum cache reuse? | [Read →](./06-prompt-caching/README.md) |
+| 07 | **Multi-Agent** | How are sub-agents spawned? How does Team mode work? | [Read →](./07-multi-agent/README.md) |
+| 08 | **MCP Integration** | How does MCP extend tool capabilities infinitely? | [Read →](./08-mcp-integration/README.md) |
+| 09 | **Startup Optimization** | Parallel prefetch + lazy loading + dead code elimination? | [Read →](./09-startup-optimization/README.md) |
+| 10 | **Feature Flags** | What are KAIROS, PROACTIVE, and other hidden features? | [Read →](./10-feature-flags/README.md) |
+| 11 | **Security** | 7,000+ lines of Bash security — what are they checking? | [Read →](./11-security/README.md) |
 
-## 源码获取
+## Highlights You Won't Find Elsewhere
 
-本项目分析基于 npm 公开包中的 source map 提取：
+<details>
+<summary><b>🔥 Internal vs External prompts — Anthropic employees get a different Claude</b></summary>
+
+```typescript
+// External users get:
+"Go straight to the point. Try the simplest approach first."
+
+// Internal users (USER_TYPE === 'ant') get:
+"Write user-facing text in flowing prose while eschewing fragments,
+ excessive em dashes, symbols and notation..."
+// + numeric length anchors: "≤25 words between tool calls"
+// + assertiveness: "If you notice the user's request is based
+//   on a misconception, say so."
+```
+
+Internal Claude Code is more verbose, more opinionated, and actively challenges user assumptions. External Claude is concise and compliant.
+
+→ [Full analysis in Chapter 01](./01-system-prompt/README.md)
+</details>
+
+<details>
+<summary><b>🔥 The 10.2% cache disaster — one dynamic list cost millions</b></summary>
+
+The Agent list was embedded in AgentTool's description (part of the tool schema). MCP connections changed → agent list changed → tool schema changed → **entire prompt cache invalidated**.
+
+This single issue consumed **10.2% of fleet-wide cache creation tokens**.
+
+Fix: moved agent list to a message attachment (`agent_listing_delta`), removing it from the cacheable schema.
+
+→ [Full analysis in Chapter 06](./06-prompt-caching/README.md)
+</details>
+
+<details>
+<summary><b>🔥 KAIROS — Claude Code's unreleased "Assistant Mode"</b></summary>
+
+Hidden behind the `KAIROS` feature flag, this mode transforms Claude Code from a reactive tool into a **proactive assistant** that can:
+- Sleep and wake on schedule (`SleepTool`)
+- Push notifications to your phone (`PushNotificationTool`)
+- Subscribe to PR changes (`SubscribePRTool`)
+- Send files to you (`SendUserFileTool`)
+- Generate daily briefs (`BriefTool`)
+
+→ [Full analysis in Chapter 10](./10-feature-flags/README.md)
+</details>
+
+<details>
+<summary><b>🔥 The 20-line startup trick that saves 65ms</b></summary>
+
+```typescript
+// main.tsx — first 20 lines, BEFORE any other imports:
+profileCheckpoint('main_tsx_entry');
+startMdmRawRead();      // fires MDM subprocess
+startKeychainPrefetch(); // fires 2 keychain reads in parallel
+// ... then 135ms of heavy module imports happen ...
+// By the time imports finish, I/O results are already available
+```
+
+They exploit JavaScript's import evaluation order to overlap I/O with module loading.
+
+→ [Full analysis in Chapter 09](./09-startup-optimization/README.md)
+</details>
+
+## Tech Stack
+
+| Category | Technology |
+|----------|-----------|
+| Runtime | [Bun](https://bun.sh) |
+| Language | TypeScript (strict) |
+| Terminal UI | React + [Ink](https://github.com/vadimdemedes/ink) |
+| CLI Parsing | [Commander.js](https://github.com/tj/commander.js) (extra-typings) |
+| Schema Validation | [Zod v4](https://zod.dev) |
+| Code Search | [ripgrep](https://github.com/BurntSushi/ripgrep) |
+| Protocols | [MCP SDK](https://modelcontextprotocol.io), LSP |
+| API | [Anthropic SDK](https://docs.anthropic.com) |
+| Telemetry | OpenTelemetry + gRPC |
+| Feature Flags | GrowthBook |
+| Auth | OAuth 2.0, JWT, macOS Keychain |
+
+## Reproduce the Extraction
 
 ```bash
-# 1. 下载 npm 包
+# 1. Download the npm package
 npm pack @anthropic-ai/claude-code@2.1.88 --registry https://registry.npmjs.org
 
-# 2. 解压
+# 2. Unpack
 tar -xzf anthropic-ai-claude-code-2.1.88.tgz
 
-# 3. 用 Node.js 解析 source map 提取源码
-# 详见本项目 scripts/extract-sources.js
+# 3. Extract sources from the map file
+node scripts/extract-sources.js ./package/cli.js.map ./extracted-src
+# → 1,906 files, 515,029 lines
 ```
 
-## 参考资料
+## Timeline
 
-**逆向工程项目：**
-- [instructkr/claude-code](https://github.com/instructkr/claude-code) — Source map 完整源码快照
-- [hitmux/HitCC](https://github.com/hitmux/HitCC) — 最全面的逆向文档
-- [Piebald-AI/claude-code-system-prompts](https://github.com/Piebald-AI/claude-code-system-prompts) — System Prompt 全版本追踪
-- [ghuntley/claude-code-source-code-deobfuscation](https://github.com/ghuntley/claude-code-source-code-deobfuscation) — LLM cleanroom 反混淆
+| Date | Event |
+|------|-------|
+| 2025-02-24 | v0.2.8 ships with inline base64 source map — recovered via Sublime Text undo |
+| 2025-03 | Anthropic pushes update to remove source maps, deletes old npm versions |
+| 2026-03-06 | Agent SDK accidentally bundles full CLI (v2.1.71, 13,800 lines minified) |
+| 2026-03-27 | CMS misconfiguration exposes ~3,000 internal docs including Claude Mythos |
+| 2026-03-31 | v2.1.88 ships with `cli.js.map` (59.8MB) — all 1,906 source files extractable |
 
-**分析文章：**
-- [How Claude Code Actually Works (KaraxAI)](https://karaxai.com/posts/how-claude-code-works-systems-deep-dive/)
-- [Under the Hood of Claude Code (Pierce Freeman)](https://pierce.dev/notes/under-the-hood-of-claude-code/)
-- [Architecture & Internals (Bruniaux)](https://cc.bruniaux.com/guide/architecture/)
-- [Digging into the Source (Dave Schumaker)](https://daveschumaker.net/digging-into-the-claude-code-source-saved-by-sublime-text/)
+## Related Work
 
-## 贡献
+**Source & Reverse Engineering:**
+- [instructkr/claude-code](https://github.com/instructkr/claude-code) — Full source snapshot from source maps (5.5k stars)
+- [hitmux/HitCC](https://github.com/hitmux/HitCC) — Most comprehensive RE documentation (81 files, 27K lines)
+- [Piebald-AI/claude-code-system-prompts](https://github.com/Piebald-AI/claude-code-system-prompts) — System prompt tracking across 136+ versions
+- [ghuntley/claude-code-source-code-deobfuscation](https://github.com/ghuntley/claude-code-source-code-deobfuscation) — LLM cleanroom deobfuscation
 
-欢迎 PR！如果你对某个模块有深入理解，或者发现了本项目的错误，请提交 Issue 或 PR。
+**Analysis Articles:**
+- [How Claude Code Actually Works — KaraxAI](https://karaxai.com/posts/how-claude-code-works-systems-deep-dive/)
+- [Under the Hood — Pierce Freeman](https://pierce.dev/notes/under-the-hood-of-claude-code/)
+- [Architecture & Internals — Bruniaux](https://cc.bruniaux.com/guide/architecture/)
+- [Digging into the Source — Dave Schumaker](https://daveschumaker.net/digging-into-the-claude-code-source-saved-by-sublime-text/)
 
-**贡献方向：**
-- 补充章节内容（特别是标记为 WIP 的部分）
-- 添加架构图和流程图
-- 纠正技术细节错误
-- 翻译为其他语言
+## Contributing
 
-## 声明
+PRs welcome. Especially:
+- Deepening chapters marked as skeleton/WIP
+- Adding architecture diagrams
+- Correcting technical errors
+- Translations
 
-本项目仅用于教育和技术研究目的。所有 Claude Code 源码的知识产权归 Anthropic 所有。本项目不包含任何原始源码，仅包含架构分析和原理解读。
+## Disclaimer
+
+This project is for **educational and research purposes only**. All Claude Code intellectual property belongs to Anthropic. This repository contains no original source code — only architecture analysis and design explanations.
 
 ---
 
-<p align="center">
-  <sub>如果觉得有用，请给个 Star ⭐ — 这是持续更新的最大动力</sub>
-</p>
+<div align="center">
+
+**If you find this useful, consider giving it a ⭐**
+
+*Built by [agenmod](https://github.com/agenmod)*
+
+</div>
